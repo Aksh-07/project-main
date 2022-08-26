@@ -6,8 +6,9 @@ import logging
 import json
 from datetime import datetime"""
 import logging
+from operator import index
 import queue
-
+import requests
 from numpy import array
 from speech_errors import SpeechResult as enums
 from speech_errors import SpeechProcessError, SpeechInvalidArgumentError
@@ -96,25 +97,56 @@ class RetailActions:
             if index == 1:
                 rows = g_db_obj.fetch_db_data(table, self.data[0][0])
                 if rows is not None:
-                    for r in rows:
-                        if r[1] == self.data[0][1]:
-                            if self.compare_input_string(r[3], self.data[0][2]):
-                                self.words.append(r[3])
-                                logging.info("Success")
-                                return r[3]
-                    return None
+                    occurence = [r[2] for r in rows]
+                    parameters = {
+                        "table name": table,
+                        "size": rows[0][0],
+                        "occurence": max(occurence),
+                        "matrix": [eval(r[1]) for r in rows],
+                        "category": [r[3] for r in rows],
+                        "user_input_matrix": self.data[0][1]
+                    }
+                    print(f"parameters 1: {parameters}")
+                    # for r in rows:
+                    #     if r[1] == self.data[0][1]:
+                    #         if self.compare_input_string(r[3], self.data[0][2]):
+                    #             self.words.append(r[3])
+                    #             logging.info("Success")
+                    #             return r[3]
+                    
+                    word_from_api = requests.get(url="", params=parameters)
+                    print(word_from_api.json())
+                    self.words.append["word from api"]
+                    logging.info("Success")
+                    return "word from api"
                 else:
-                    logging.debug("This is of intention to " + query_type + " android application")
+                    # logging.debug("This is of intention to " + query_type + " android application")
+                    logging.error(f"No match found in table: {table}")
                     return None
-            for i in range(index):
-                rows = g_db_obj.fetch_db_data(table, self.data[i][0])
-                if rows is not None:
-                    for r in rows:
-                        if r[1] == self.data[i][1]:
-                            if self.compare_input_string(r[3], self.data[i][2]):
-                                self.words.append(r[3])
-            logging.info("Success")
-            return None
+            else:
+                for i in range(index):
+                    rows = g_db_obj.fetch_db_data(table, self.data[i][0])
+                    if rows:
+                        parameters = {
+                            "table name": table,
+                            "size": rows[0][0],
+                            "occurence": rows[0][2],
+                            "matrix": [r[1] for r in rows],
+                            "category": [r[3] for r in rows],
+                            "user_input_matrix": self.data[i][1]
+                        }
+                        print(f"parameters 2: {parameters}")
+                        # for r in rows:
+                        #     if r[1] == self.data[i][1]:
+                        #         if self.compare_input_string(r[3], self.data[i][2]):
+                        #             self.words.append(r[3])
+
+                        word_from_api = requests.get(url="", params=parameters)
+                        print(word_from_api.json())
+                        self.words.append["word from api"]
+                        logging.info("Success")
+                    else:
+                        logging.debug(f"No matching data in table: {table}")
         except Exception as e:
             logging.error(f"{e}")
             raise SpeechProcessError(e)
@@ -135,9 +167,9 @@ class RetailActions:
         if incomplete is not None:
             for item in incomplete:
                 word.append(item)
-            logging.info("Success")
+            logging.error("return missing details")
             return word
-        logging.error("return None")
+        logging.info("success")
         return None
 
     
@@ -241,7 +273,7 @@ class RetailActions:
         return lis
 
     
-    def ret_get_more_input(self, incomplete: list):
+    def ret_get_more_input(self, incomplete: list, index):
         """calls request_user_for_input() and update_user_input_to_cloud() from user_input module
 
         Args:
@@ -255,12 +287,20 @@ class RetailActions:
             str: FAILURE
         """
         try:
-            if self.g_ui_obj.request_user_for_input(incomplete) == enums.FAILURE.name:
-                logging.error("Insufficient input from user, could not process the request '{}'".format(incomplete))
-                y=self.g_ui_obj.update_user_input_to_cloud(incomplete)
+            words = self.g_ui_obj.request_user_for_input(incomplete)
+            # if word == enums.FAILURE.name:
+            #     logging.error("Insufficient input from user, could not process the request '{}'".format(incomplete))
+            #     y=self.g_ui_obj.update_user_input_to_cloud(incomplete)
+            #     return enums.FAILURE.name
+            if words is enums.FAILURE.name:
+                whole_input = [self.data[i][2] for i in range(index)]
+                insuf_input = [x.decode("utf_8") for x in whole_input if x not in self.words]
+                logging.error("Insufficient user input, could not process '{}'".format(insuf_input))
+                y=self.g_ui_obj.update_user_input_to_cloud(insuf_input)
                 return enums.FAILURE.name
-            logging.info("Success")
-            return enums.SUCCESS.name
+            else:
+                logging.info("Success")
+                return words
         except Exception as e:
             logging.error(f"{e}")
             raise SpeechInvalidArgumentError(e)
@@ -418,9 +458,12 @@ class RetailActions:
                 logging.warning("This is of intention to " + query_type + " business action and incomplete")
                 """ Request for user input"""
                 words = self.validate_user_input(index)
-                if self.ret_get_more_input(words) == enums.SUCCESS.name:
+                new_input = self.ret_get_more_input(words)
+                if new_input != enums.FAILURE.name:
+                    ni = self.additional_user_input(new_input)
+                    index = ni
                     if self.check_retail_command_status(index) == enums.SUCCESS.name:
-                        if self.validate_user_input(index) is not None:
+                        if self.validate_user_input(index) is None:
                             logging.info("Success")
                             q_t.put(enums.SUCCESS.name)
                         else:
@@ -433,25 +476,53 @@ class RetailActions:
                     logging.error("Failure")
                     q_t.put(enums.FAILURE.name)
             else:
-                if self.check_retail_command_status(index) == enums.SUCCESS.name:
+                if self.check_retail_command_status(index) == enums.FAILURE.name:
                     words = self.validate_user_input(index)
-                    if self.ret_get_more_input(words) == enums.SUCCESS.name:
-                        if self.check_retail_command_status(index) == enums.SUCCESS.name:
-                            if self.validate_user_input(index) is not None:
-                                logging.info("Success")
-                                q_t.put(enums.SUCCESS.name)
+                    if words is None:
+                        logging.info("Success")
+                        q_t.put(enums.SUCCESS.name)
+                    else:
+                        new_input = self.ret_get_more_input(words)
+                        if new_input != enums.FAILURE.name:
+                            ni = self.additional_user_input(new_input)
+                            index = ni
+                            if self.check_retail_command_status(index) == enums.SUCCESS.name:
+                                if self.validate_user_input(index) is None:
+                                    logging.info("Success")
+                                    q_t.put(enums.SUCCESS.name)
+                                else:
+                                    logging.error("Failure")
+                                    q_t.put(enums.FAILURE.name)
                             else:
                                 logging.error("Failure")
                                 q_t.put(enums.FAILURE.name)
                         else:
                             logging.error("Failure")
                             q_t.put(enums.FAILURE.name)
-                    else:
-                        logging.error("Failure")
-                        q_t.put(enums.FAILURE.name)
+                        
+                        
+                    #     logging.error("Failure")
+                    #     q_t.put(enums.FAILURE.name)
+                    # words = self.validate_user_input(index)
+                    # if words is not None:
+                    #     if self.ret_get_more_input(words) == enums.SUCCESS.name:
+                            
+                    #         if self.check_retail_command_status(index) == enums.SUCCESS.name:
+                    #             if self.validate_user_input(index) is None:
+                    #                 logging.info("Success")
+                    #                 q_t.put(enums.SUCCESS.name)
+                    #             else:
+                    #                 logging.error("Failure")
+                    #                 q_t.put(enums.FAILURE.name)
+                    #         else:
+                    #             logging.error("Failure")
+                    #             q_t.put(enums.FAILURE.name)
+                    #     else:
+                    #         logging.error("Failure")
+                    #         q_t.put(enums.FAILURE.name)
                 else:
-                    logging.error("Failure")
-                    q_t.put(enums.FAILURE.name)
+                    logging.info("Success")
+                    q_t.put(enums.Success.name)
         except Exception as e:
             logging.error(f"{e}")
             raise SpeechProcessError(e)
@@ -483,3 +554,17 @@ class RetailActions:
         except Exception as e:
             logging.error(f"{e}")
             raise SpeechProcessError(e)
+
+    def additional_user_input(self, user_text: str):
+        """get input from java side and updates self.data with new data and return updated index
+
+        Args:
+            user_text (str): user input from java
+
+        Returns:
+            int: updated index
+        """
+        new_word, new_index = self.g_ui_obj.convert_strings_to_num_array(user_text)
+        self.data = new_word
+        logging.info("Success")
+        return new_index
