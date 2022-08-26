@@ -4,6 +4,7 @@ from speech_errors import SpeechResult as enums
 from speech_errors import SpeechProcessError
 import numpy as np
 import logging
+import requests
 # from decorators import status_check
 
 database = r"user_tasks.db"
@@ -97,7 +98,7 @@ class ProcessDataBaseRequests:
         """
         try:
             c = self.conn.cursor()
-            qstr = "INSERT INTO {0} VALUES (?,?,?,?,?,?,?,?)".format(table_name)
+            qstr = "INSERT INTO {0} VALUES (?,?,?,?,?,?)".format(table_name)
             c.execute(qstr, input_data)
             self.conn.commit()
             logging.info("Success")
@@ -122,7 +123,7 @@ class ProcessDataBaseRequests:
         """
         try:
             c = self.conn.cursor()
-            qstr = "INSERT INTO {0} VALUES (?,?,?,?,?,?,?,?,?)".format(table_name)
+            qstr = "INSERT INTO {0} VALUES (?,?,?,?,?,?,?)".format(table_name)
             c.execute(qstr, input_data)
             self.conn.commit()
             logging.info("Success")
@@ -147,7 +148,7 @@ class ProcessDataBaseRequests:
         """
         try:
             c = self.conn.cursor()
-            qstr = "INSERT INTO {0} VALUES (?,?,?,?,?,?)".format(table_name)
+            qstr = "INSERT INTO {0} VALUES (?,?,?,?)".format(table_name)
             c.execute(qstr, input_data)
             self.conn.commit()
             logging.info("Success")
@@ -199,15 +200,26 @@ class ProcessDataBaseRequests:
         """
         try:
             records = self.fetch_db_data(table_name, input_key)
-            key_value = None
+            # key_value = None
             if records is not None:
-                for row in records:
-                    if row[3] == input_data:
-                        key_value = row[3]
+                # for row in records:
+                #     if row[3] == input_data:
+                #         key_value = row[3]
+                parameters = {
+                        "table name": table_name,
+                        "size": records[0][0],
+                        "occurence": records[0][2],
+                        "matrix": [r[1] for r in records],
+                        "category": [r[3] for r in records],
+                        "user_input_matrix": input_data
+                    }
 
+                word_from_api = requests.get(url="", params=parameters)
+                print(word_from_api.json())
+                row_id = word_from_api["row_id"]
                 c = self.conn.cursor()
-                qstr = "DELETE FROM {0} WHERE Name = ?".format(table_name)
-                c.execute(qstr, (key_value,))
+                qstr = "DELETE FROM {0} WHERE rowid = ?".format(table_name)
+                c.execute(qstr, (row_id,))
                 self.conn.commit()
                 logging.info("Success")
                 return enums.SUCCESS.name

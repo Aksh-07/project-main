@@ -1,5 +1,6 @@
 from distutils.text_file import TextFile
 from multiprocessing import current_process
+import queue
 from py4j.java_gateway import JavaGateway,GatewayParameters, CallbackServerParameters
 import user_input as py_obj
 from datetime import datetime
@@ -65,13 +66,6 @@ class PythonSpeechWrapper:
 
     def __del__(self):
         pass
-
-  
-
-    def extra_user_input(self, item, i_q):
-        a = android_actions.AndroidActions.additional_user_input(item)
-        i_q.put(a)
-
         
     def get_user_input(self, data_type: str):
         """calls and compare the results from self.user_obj.run() with data_type and input_dta as argument
@@ -136,8 +130,8 @@ class PythonSpeechWrapper:
         """calls delete_local_db_data() from user_input module to delete row with given input_data from given table_name
 
         Args:
-            table_name (str): name of table to delete row from
-            input_data (str): data to match and find the row
+            table_name (str): name of table
+            input_data (str): data to match
 
         Returns:
             str: result from function delete_local_db_data() from user_input module
@@ -161,27 +155,32 @@ class PythonJavaBridge(object):
     
 
     def Close_gateway(self):
-        gateway.shutdown_callback_server()
+        
+        """ Close the callback server
+        """
+        try:
+            gateway.shutdown_callback_server()
+            logging.info("Success")
+        except Exception as e:
+            logging.error(f"{e}")
+            raise SpeechProcessError(e)
 
 
     @staticmethod
-    def request_user_input_from_java(que1):
-        """send incomplete_input to java side functions
-
+    def request_user_input_from_java(que1: queue, input_need: list):
+        """send missing details of input to java side functions and asks for input again
         Args:
-            incomplete_input (list): list from validate_user_input() function from retail_actions module
-
+            input_need (list): missing details of input
         Raises:
             SpeechProcessError: _description_
-
         Returns:
             str: SUCCESS if java side functions return something
                  FAILURE if java side functions return nothing
         """
         try:
             # obj = PythonSpeechWrapper()
-            result = speech_process.fill_data_for_speech_request()
-            if result is None:
+            result = speech_process.fillDataForSpeechRequest(input_need)
+            if result=="Failed" or str==None:
                 logging.error("Failed to get requested input")
                 que1.put( enums.FAILURE.name)
             logging.info("Success")
@@ -191,48 +190,51 @@ class PythonJavaBridge(object):
             raise SpeechProcessError(e)
     
     @staticmethod
-    def takeinput_from_java(que5):
-     try:
-        str=speech_process.enterinput()
-        if str is None:
-                logging.error("Failed to get requested input")
-                que5.put( enums.FAILURE.name)
-        logging.info("Success")
-        que5.put(str)
-     except Exception as e:
-        logging.error(f"{e}")
-        raise SpeechProcessError(e)
-
-    @staticmethod
-    def update_new_words_to_analysis(new_user_words: list,que2):
-        """send the new word to java functions for update and analysis
-
+    def take_input_from_java(que5: queue):
+        """Takes input as string from java side 
         Args:
-            new_user_words (list): list of words and its related description from user
-
+            que5 (que): queue
         Raises:
             SpeechProcessError: _description_
-
-        Returns:
-            str: SUCCESS if java side functions return something
-                 FAILURE if java side functions return nothing
         """
         try:
-            obj = PythonSpeechWrapper()
-            result = speech_process.update_new_words_cloud(new_user_words, obj)
-            if result == 0:
+            str=speech_process.enterFirstInput()
+            if str =="Failed" or str==None :
                 logging.error("Failed to get requested input")
-                que2.put(enums.FAILURE.name)
-            else:
-                logging.info("Success")
-                que2.put(enums.SUCCESS.name)
+                que5.put( enums.FAILURE.name)
+            logging.info("Success")
+            que5.put(str)
         except Exception as e:
             logging.error(f"{e}")
             raise SpeechProcessError(e)
 
     @staticmethod
+    def update_new_words_to_analysis(new_user_words: list, que2: queue):
+        """send the new word to java functions for update and analysis
+        Args:
+            new_user_words (list): list of words and its related description from user
+            que2 (que): queue
+        Raises:
+            SpeechProcessError: _description_
+        Returns:
+            str: SUCCESS if java side functions return something
+                 FAILURE if java side functions return nothing
+        """
+        try:
+            result = speech_process.updateNewWordsCloud(new_user_words)
+            if result:
+                logging.error("Failed to get requested input")
+                que2.put( enums.FAILURE.name)
+            logging.info("Success")
+            que2.put(enums.SUCCESS.name)
+        except Exception as e:
+            logging.error(f"{e}")
+            raise SpeechProcessError(e)
+
+
+    @staticmethod
     def process_user_intention_actions(words: list):
-        """send words to java side functions
+        """send list to java side functions
 
         Args:
             words (list): list containing all information about the word user entered

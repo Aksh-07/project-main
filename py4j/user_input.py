@@ -7,16 +7,14 @@ import json
 from datetime import datetime
 """
 from distutils.text_file import TextFile
-import imp
 import logging
-from re import A
 import android_actions as aa
 import retail_actions as ra
 from speech_errors import SpeechResult as enums
 from speech_errors import SpeechProcessError, SpeechInvalidArgumentError
-from multiprocessing import Process, Lock, Value, JoinableQueue
+from multiprocessing import Process, Lock, Value
 import multiprocessing
-from threading import Thread
+from threading import Thread, RLock
 import queue
 import numpy as np
 import user_database
@@ -35,110 +33,89 @@ for x in sample:
 
 android_actions = """ CREATE TABLE IF NOT EXISTS android_actions 
                                     (Size INT     NOT NULL,
-                                    Length INT      NOT NULL,
+                                    Matrix   TEXT    NOT NULL,
                                     Occurrence  INT      NOT NULL,
-                                    Name   TEXT    NOT NULL,
-                                    Category            TEXT     NOT NULL,
-                                    Matrix   TEXT    NOT NULL);"""
+                                    Category            TEXT     NOT NULL);"""
 
 android_words = """ CREATE TABLE IF NOT EXISTS android_words
                                     (Size INT     NOT NULL,
-                                    Length INT      NOT NULL,
+                                    Matrix   TEXT    NOT NULL,
                                     Occurrence  INT      NOT NULL,
-                                    Name   TEXT    NOT NULL,
-                                    Category            TEXT     NOT NULL,
-                                    Matrix   TEXT    NOT NULL);"""
+                                    Category            TEXT     NOT NULL);"""
 
 global_locations = """ CREATE TABLE IF NOT EXISTS global_locations
                                     (Size INT     NOT NULL,
-                                    Length INT      NOT NULL,
+                                    Matrix   TEXT    NOT NULL,
                                     Occurrence  INT      NOT NULL,
-                                    Name   TEXT    NOT NULL,
-                                    Category            TEXT     NOT NULL,
-                                    Matrix   TEXT    NOT NULL);"""
+                                    Category            TEXT     NOT NULL);"""
 
 adverb_table = """ CREATE TABLE IF NOT EXISTS adverb_table
                                     (Size INT     NOT NULL,
-                                    Length INT      NOT NULL,
+                                    Matrix   TEXT    NOT NULL,
                                     Occurrence  INT      NOT NULL,
-                                    Name   TEXT    NOT NULL,
-                                    Category            TEXT     NOT NULL,
-                                    Matrix   TEXT    NOT NULL);"""
+                                    Category            TEXT     NOT NULL);"""
 
 questions_tenses = """ CREATE TABLE IF NOT EXISTS questions_tenses
                                     (Size INT     NOT NULL,
-                                    Length INT      NOT NULL,
+                                    Matrix   TEXT    NOT NULL,
                                     Occurrence  INT      NOT NULL,
-                                    Name   TEXT    NOT NULL,
-                                    Category            TEXT     NOT NULL,
-                                    Matrix   TEXT    NOT NULL);"""
+                                    Category            TEXT     NOT NULL);"""
 
 businesses = """ CREATE TABLE IF NOT EXISTS businesses
                                     (Size INT     NOT NULL,
-                                    Length INT      NOT NULL,
+                                    Matrix   TEXT    NOT NULL,
                                     Occurrence  INT      NOT NULL,
-                                    Name   TEXT    NOT NULL,
-                                    Category            TEXT     NOT NULL,
+                                    Category       TEXT     NOT NULL,
                                     Address        TEXT      NOT NULL,
-                                    Updated_date         TEXT NOT NULL,
-                                    Matrix   TEXT    NOT NULL);"""
+                                    Updated_date   TEXT      NOT NULL);"""
 
 business_supplies = """ CREATE TABLE IF NOT EXISTS business_supplies
                                     (Size INT     NOT NULL,
-                                    Length INT     NOT NULL,
+                                    Matrix   TEXT    NOT NULL,
                                     Occurrence  INT      NOT NULL,
-                                    Name   TEXT    NOT NULL,
-                                    Category            TEXT     NOT NULL,
-                                    Brand         TEXT NOT NULL,
-                                    Updated_date         TEXT NOT NULL,
-                                    Matrix   TEXT    NOT NULL);"""
+                                    Category      TEXT     NOT NULL,
+                                    Brand         TEXT   NOT NULL,
+                                    Updated_date  TEXT   NOT NULL);"""
 
 business_actions = """ CREATE TABLE IF NOT EXISTS business_actions
                                     (Size INT     NOT NULL,
-                                    Length INT      NOT NULL,
+                                    Matrix   TEXT    NOT NULL,
                                     Occurrence  INT      NOT NULL,
-                                    Name   TEXT    NOT NULL,
-                                    Category            TEXT     NOT NULL,
-                                    Brand         TEXT NOT NULL,
-                                    Updated_date         TEXT NOT NULL,
-                                    Matrix   TEXT    NOT NULL);"""
+                                    Category      TEXT     NOT NULL,
+                                    Brand         TEXT     NOT NULL,
+                                    Updated_date  TEXT     NOT NULL);"""
 
 available_supplies = """ CREATE TABLE IF NOT EXISTS available_supplies
                                     (Size INT     NOT NULL,
-                                    Length INT      NOT NULL,
+                                    Matrix   TEXT    NOT NULL,
                                     Occurrence  INT      NOT NULL,
-                                    Name   TEXT    NOT NULL,
                                     Category            TEXT     NOT NULL,
                                     Brand         TEXT NOT NULL,
-                                    Available_stores         TEXT NOT NULL,
-                                    Updated_date         TEXT NOT NULL,
-                                    Matrix   TEXT    NOT NULL);"""
+                                    Available_stores  TEXT   NOT NULL,
+                                    Updated_date      TEXT   NOT NULL);"""
 
 supply_add_ons = """ CREATE TABLE IF NOT EXISTS supply_add_ons
                                     (Size INT     NOT NULL,
-                                    Length INT      NOT NULL,
+                                    Matrix   TEXT    NOT NULL,
                                     Occurrence  INT      NOT NULL,
-                                    Name   TEXT    NOT NULL,
                                     Category            TEXT     NOT NULL,
-                                    Brand         TEXT NOT NULL,
-                                    Available_stores         TEXT NOT NULL,
-                                    Updated_date         TEXT NOT NULL,
-                                    Matrix   TEXT    NOT NULL);"""
+                                    Brand         TEXT    NOT NULL,
+                                    Available_stores      TEXT  NOT NULL,
+                                    Updated_date     TEXT   NOT NULL);"""
 
 supply_descriptions = """ CREATE TABLE IF NOT EXISTS supply_descriptions
                                     (Size INT     NOT NULL,
-                                    Length INT      NOT NULL,
+                                    Matrix   TEXT    NOT NULL,
                                     Occurrence  INT      NOT NULL,
-                                    Name   TEXT    NOT NULL,
                                     Category            TEXT     NOT NULL,
                                     Brand         TEXT NOT NULL,
-                                    Available_stores         TEXT NOT NULL,
-                                    Updated_date         TEXT NOT NULL,
-                                    Matrix   TEXT    NOT NULL);"""
+                                    Available_stores    TEXT NOT NULL,
+                                    Updated_date    TEXT NOT NULL);"""
 
 g_a_obj = None
 g_r_obj = None
 
+t_lock = RLock()
 lock = Lock()
 m_lock1 = Lock()
 m_lock2 = Lock()
@@ -206,46 +183,45 @@ class ProcessUserInput:
         return python_wrapper.PythonJavaBridge()
     
     def takeinput(self):
-        """Calls takeinput_from_java from python_wrapper module for input
-
+        """Calls take_input_from_java from python_wrapper module for input
         Returns:
             String: input
         """
-        que5=queue.Queue()
-        t5=Thread(target=self.g_py_obj.takeinput_from_java,args=(que5,))
-        t5.start()
-        t5.join()
-        y=que5.get()
-        if y==enums.FAILURE.name:
-                logging.error("Failure") 
+        try:
+            que5=queue.Queue()
+            t5=Thread(target=self.g_py_obj.take_input_from_java,args=(que5,))
+            t5.start()
+            t5.join()
+            first_input=que5.get()
+            if first_input==enums.FAILURE.name:
+                logging.error("No user input") 
                 return enums.FAILURE.name
-        logging.info("Success")
-        return y
+            logging.info("Success")
+            return first_input
+        except Exception as e:
+            logging.error(f"{e}")
+            raise SpeechProcessError(e)
 
-
-    def request_user_for_input(self):
+    def request_user_for_input(self, input_need):
         """calls request_user_input_from_java from python_wrapper module for additional input from user
-
-
         Raises:
             SpeechProcessError: _description_
-
         Returns:
             str: SUCCESS
             str: FAILURE
         """
         try:
             que1=queue.Queue()
-            t1=Thread(target=self.g_py_obj.request_user_input_from_java,args=(que1,))
+            t1=Thread(target=self.g_py_obj.request_user_input_from_java,args=(que1,input_need,))
             t1.start()
             t1.join()
-            y=que1.get()
+            second_input=que1.get()
     
-            if y==enums.FAILURE.name:
-                logging.error("Failure") 
+            if second_input==enums.FAILURE.name:
+                logging.error("No user input") 
                 return enums.FAILURE.name
             logging.info("Success")
-            return y
+            return second_input
         
         except Exception as e:
             logging.error(f"{e}")
@@ -311,7 +287,7 @@ class ProcessUserInput:
                 arr = np.frombuffer(str1, dtype=np.uint8)
                 data_arr = np.array(arr)
                 matrix = strings_to_matrix_calculation(str1.decode("utf_8"))
-                word_lst = [np.sum(data_arr), data_arr.size, str1, matrix]
+                word_lst = [np.sum(data_arr).tolist(), matrix, str1]
                 words_lst.append(word_lst)
             logging.info("Success")
             return words_lst, index
@@ -320,12 +296,9 @@ class ProcessUserInput:
             raise SpeechProcessError(e)
 
     def decode_user_input(self):
-        """convert user enterd string into list containg each words information using convert_strings_to_num_array() and then pass the information
+        """convert user enterd string into list containg each words information and then pass the information
         to decode_user_input_for_android_actions() and decode_user_input_for_retail_actions() of module android_action and retail_action simultaniously using threads
-        for processing and give the results depending on processig
-
-        Args:
-            _string (str): user entered string
+        for processing and give check the results 
 
         Raises:
             SpeechProcessError: _description_
@@ -345,8 +318,8 @@ class ProcessUserInput:
             q_t = queue.Queue(2)
             g_a_obj = aa.AndroidActions(words)
             g_r_obj = ra.RetailActions(words)
-            and_t = Thread(target=g_a_obj.decode_user_input_for_android_actions, args=(index, q_t,), daemon=True)
-            ret_t = Thread(target=g_r_obj.decode_user_input_for_retail_actions, args=(index, q_t), daemon=True)
+            and_t = Thread(target=g_a_obj.decode_user_input_for_android_actions, args=(index, q_t, t_lock,), daemon=True)
+            ret_t = Thread(target=g_r_obj.decode_user_input_for_retail_actions, args=(index, q_t, t_lock,), daemon=True)
             and_t.start()
             ret_t.start()
             and_t.join()
@@ -374,7 +347,11 @@ class ProcessUserInput:
                 return enums.SUCCESS.name
             else:
                 logging.error("Unable to process user input")
-                self.update_user_input_to_cloud(list(_string))
+                for i in range(0,len(words)):
+                    words[i][2]=words[i][2].decode("utf_8")
+                # print(words)
+                
+                self.update_user_input_to_cloud(words)
                 return enums.INVALID_INPUT.name
         except Exception as e:
             logging.error(f"{e}")
@@ -461,18 +438,19 @@ class ProcessUserInput:
                         strings = word_lst[3].encode('utf_8')
                         arr = np.frombuffer(strings, dtype=np.uint8)
                         data_arr = np.array(arr)
-                        words_lst.append(np.sum(data_arr))
-                        words_lst.append(data_arr.size)
-                        occurrence = sum(x.count(np.sum(data_arr)) for x in android_input_data)
-                        occurrence1 = sum(x.count(np.sum(data_arr)) for x in android_input_data)
-                        if occurrence == occurrence1:
-                            words_lst.append(occurrence)
-                        else:
-                            words_lst.append(1)
-                        words_lst.append(strings)
-                        words_lst.append(word_lst[4])
+                        words_lst.append(np.sum(data_arr).tolist())
+                        # words_lst.append(data_arr.size)
                         matrix = strings_to_matrix_calculation(strings.decode("utf_8"))
                         words_lst.append(f"{matrix}")
+                        occurrence = sum(x.count(np.sum(data_arr)) for x in android_input_data)
+                        # occurrence1 = sum(x.count(np.sum(data_arr)) for x in android_input_data)
+                        if occurrence == 0:
+                            words_lst.append(1)
+                        else:
+                            words_lst.append(occurrence + 1)
+                        # words_lst.append(strings)
+                        words_lst.append(word_lst[4])
+                        
                         android_input_data.append(words_lst)
                         words_lst = []
 
@@ -482,20 +460,20 @@ class ProcessUserInput:
                         strings = word_lst[3].encode('utf_8')
                         arr = np.frombuffer(strings, dtype=np.uint8)
                         data_arr = np.array(arr)
-                        words_lst.append(np.sum(data_arr))
-                        words_lst.append(data_arr.size)
+                        words_lst.append(np.sum(data_arr).tolist())
+                        # words_lst.append(data_arr.size)
+                        matrix = strings_to_matrix_calculation(strings.decode("utf_8"))
+                        words_lst.append(f"{matrix}")
                         occurrence = sum(x.count(np.sum(data_arr)) for x in business_input_data)
-                        occurrence1 = sum(x.count(np.sum(data_arr)) for x in business_input_data)
-                        if occurrence == occurrence1:
-                            words_lst.append(occurrence)
-                        else:
+                        # occurrence1 = sum(x.count(np.sum(data_arr)) for x in business_input_data)
+                        if occurrence == 0:
                             words_lst.append(1)
-                        words_lst.append(strings)
+                        else:
+                            words_lst.append(occurrence + 1)
+                        # words_lst.append(strings)
                         words_lst.append(word_lst[4])
                         words_lst.append(word_lst[5])
                         words_lst.append(word_lst[6])
-                        matrix = strings_to_matrix_calculation(strings.decode("utf_8"))
-                        words_lst.append(f"{matrix}")
                         business_input_data.append(words_lst)
                         words_lst = []
 
@@ -505,21 +483,21 @@ class ProcessUserInput:
                         strings = word_lst[3].encode('utf_8')
                         arr = np.frombuffer(strings, dtype=np.uint8)
                         data_arr = np.array(arr)
-                        words_lst.append(np.sum(data_arr))
-                        words_lst.append(data_arr.size)
+                        words_lst.append(np.sum(data_arr).tolist())
+                        # words_lst.append(data_arr.size)
+                        matrix = strings_to_matrix_calculation(strings.decode("utf_8"))
+                        words_lst.append(f"{matrix}")
                         occurrence = sum(x.count(np.sum(data_arr)) for x in supplies_input_data)
-                        occurrence1 = sum(x.count(np.sum(data_arr)) for x in supplies_input_data)
-                        if occurrence == occurrence1:
-                            words_lst.append(occurrence)
-                        else:
+                        # occurrence1 = sum(x.count(np.sum(data_arr)) for x in supplies_input_data)
+                        if occurrence == 0:
                             words_lst.append(1)
-                        words_lst.append(strings)
+                        else:
+                            words_lst.append(occurrence + 1)
+                        # words_lst.append(strings)
                         words_lst.append(word_lst[4])
                         words_lst.append(word_lst[5])
                         words_lst.append(word_lst[6])
                         words_lst.append(word_lst[7])
-                        matrix = strings_to_matrix_calculation(strings.decode("utf_8"))
-                        words_lst.append(f"{matrix}")
                         supplies_input_data.append(words_lst)
                         words_lst = []
                     else:
@@ -600,8 +578,8 @@ class ProcessUserInput:
             g_db_obj.create_connection()
             keys, index = self.convert_strings_to_num_array(data_)
             res = enums.FAILURE.name
-            for i in range(0, len(keys)):
-                res = g_db_obj.delete_db_data(table_name, keys[i][0], keys[i][2])
+            for i in range(0, index):
+                res = g_db_obj.delete_db_data(table_name, keys[i][0], keys[i][3])
                 if res != enums.SUCCESS.name:
                     logging.error("Failed to delete data {0} from table {1}".format(keys[i][2], keys[i][0]))
             logging.info("Success")

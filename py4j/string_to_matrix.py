@@ -1,7 +1,15 @@
 import numpy as np
 
 # class StringToMatrix:
-def strings_to_matrix_calculation(str1):
+def strings_to_matrix_calculation(str1: str):
+    """takes the string and create a list containing size of each word in array form
+
+    Args:
+        str1 (str): string
+
+    Returns:
+        list: list with size of each word in string as an array
+    """
     try:
         f, s = "", ""
         f_s, t_s, s_s, w0_s, w1_s, w2_s, w3_s = 0, 0, 0, 0, 0, 0, 0
@@ -66,15 +74,15 @@ def strings_to_matrix_calculation(str1):
         # print(w[2])
         # print(w[3])
         if str_len > 1 and w[0] is None and w[1] is None and w[2] is None and w[3] is None:
-            word_lst = [f_s, s_s]
+            word_lst = [t_s, str_len, [f_s, s_s]]
         elif str_len > 1 and w[0] is not None and w[1] is None and w[2] is None and w[3] is None:
-            word_lst = [f_s, s_s, w0_s]
+            word_lst = [t_s, str_len, [f_s, s_s, w0_s]]
         elif str_len > 1 and w[0] is not None and w[1] is not None and w[2] is None and w[3] is None:
-            word_lst = [f_s, s_s, w0_s, w1_s]
+            word_lst = [t_s, str_len, [f_s, s_s, w0_s, w1_s]]
         elif str_len > 1 and w[0] is not None and w[1] is not None and w[2] is not None and w[3] is None:
-            word_lst = [f_s, s_s, w0_s, w1_s, w2_s]
+            word_lst = [t_s, str_len, [f_s, s_s, w0_s, w1_s, w2_s]]
         elif str_len > 1 and w[0] is not None and w[1] is not None and w[2] is not None and w[3] is not None:
-            word_lst = [f_s, s_s, w0_s, w1_s, w2_s, w3_s]
+            word_lst = [t_s, str_len, [f_s, s_s, w0_s, w1_s, w2_s, w3_s]]
         else:
             word_lst = [t_s, str_len]
         return word_lst

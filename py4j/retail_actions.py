@@ -121,14 +121,14 @@ class RetailActions:
 
     
     def validate_user_input(self, index: int):
-        """check self.is_input_incomplete() and puts the item returned in a new list
+        """validate user input by checking self.is_input_incomplete()
 
         Args:
             index (int): length of the array created by convert_strings_to_num_array(strings)
 
         Returns:
             NONE: NONE
-            word: a list
+            word: a list with missing input details
         """
         incomplete = self.is_input_incomplete(index)
         word = []
@@ -142,14 +142,14 @@ class RetailActions:
 
     
     def is_input_incomplete(self, index: int):
-        """fill in details like query_type, business_name, item_list if they are none
+        """check and update details like query_type, business_name, item_list to see if input is complete
 
         Args:
             index (int): length of the array created by convert_strings_to_num_array(strings)
 
         Returns:
             NONE: if result list is empty
-            result: if result is not empty
+            result: missing details in input
         """
         global query_type, business_name, item_list, add_ons, description
         result = []
@@ -255,7 +255,7 @@ class RetailActions:
             str: FAILURE
         """
         try:
-            if self.g_ui_obj.request_user_for_input() == enums.FAILURE.name:
+            if self.g_ui_obj.request_user_for_input(incomplete) == enums.FAILURE.name:
                 logging.error("Insufficient input from user, could not process the request '{}'".format(incomplete))
                 y=self.g_ui_obj.update_user_input_to_cloud(incomplete)
                 return enums.FAILURE.name
@@ -267,7 +267,7 @@ class RetailActions:
 
     
     def get_business_name(self, index: int):
-        """search businesses table for matching row and return business name in bytes string or notify user and get confirmation
+        """search businesses table for matching row and return business name in bytes string
 
         Args:
             index (int): length of the array created by convert_strings_to_num_array(strings)
@@ -322,7 +322,7 @@ class RetailActions:
 
     
     def get_business_supplies_list(self, index: int):
-        """check given business's table for suuplies or available_supplies table for matching supplies
+        """check given business's table for supplies or available_supplies table for matching supplies
 
         Args:
             index (int): length of the array created by convert_strings_to_num_array(strings)
@@ -352,8 +352,7 @@ class RetailActions:
 
     
     def check_retail_command_status(self, index: int):
-        """calls get_business_name, get_business_supplies_list, get_business_action, check_description_need and check_add_ons
-        then fill the variables bussiness_name, item_list, query_type, description and add_ons 
+        """check for variables bussiness_name, item_list, query_type, description and add_ons and then updates them
 
         Args:
             index (int): length of the array created by convert_strings_to_num_array(strings)
@@ -401,18 +400,20 @@ class RetailActions:
             raise SpeechProcessError(e)
 
     
-    def decode_user_input_for_retail_actions(self, index: int, q_t: queue):
-        """Decode anp Process user input after getting an array and index from user_input.convert_strings_to_num_array(strings) and put results in queue q_t which can be either
-        SUCCESS or FAILURE depending on conditions in the function.
+    def decode_user_input_for_retail_actions(self, index: int, q_t: queue, lock):
+        """Decode and Process user input after getting an array and index from user_input.convert_strings_to_num_array(strings) and put results in queue q_t which can be either
+        SUCCESS or INVALID_INPUT depending on conditions in the function.
 
         Args:
             index (int): length of the array created by convert_strings_to_num_array(strings)
-            q_t (queue): object created from Queue.queue() class
+            q_t (queue): object created from queue.Queue() class
+            lock(lock): threading RLock object
 
         Raises:
             SpeechProcessError: _description_
         """
         try:
+            lock.acquire()
             if index == 1 and self.get_retail_actions(self.get_retail_db_words("Business_actions", index)):
                 logging.warning("This is of intention to " + query_type + " business action and incomplete")
                 """ Request for user input"""
@@ -454,10 +455,12 @@ class RetailActions:
         except Exception as e:
             logging.error(f"{e}")
             raise SpeechProcessError(e)
+        finally:
+            lock.release()
 
     
     def get_retail_actions(self, words: bytes):
-        """match words in argument with bytes string in self.data and fill query_type with word if matched
+        """check for retail_action and update query_type
 
         Args:
             words (bytes): byte string from get_retail_db_words()
