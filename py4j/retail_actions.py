@@ -458,7 +458,7 @@ class RetailActions:
                 logging.warning("This is of intention to " + query_type + " business action and incomplete")
                 """ Request for user input"""
                 words = self.validate_user_input(index)
-                new_input = self.ret_get_more_input(words)
+                new_input = self.ret_get_more_input(words, index)
                 if new_input != enums.FAILURE.name:
                     ni = self.additional_user_input(new_input)
                     index = ni
@@ -482,7 +482,7 @@ class RetailActions:
                         logging.info("Success")
                         q_t.put(enums.SUCCESS.name)
                     else:
-                        new_input = self.ret_get_more_input(words)
+                        new_input = self.ret_get_more_input(words, index)
                         if new_input != enums.FAILURE.name:
                             ni = self.additional_user_input(new_input)
                             index = ni
